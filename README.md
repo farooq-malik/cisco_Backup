@@ -17,3 +17,5 @@ Output --> (Time)(IP).txt file in same working directory.
 #### Function Call Arguments --> IP, User, Password, Enable_Secret
 *    Output --> File_Name.txt    || Please refer to str 'filename'
 *    ASA Maximum config file size : 2MB (Tested)
+
+Note: Only developed and tested in windows platform.
