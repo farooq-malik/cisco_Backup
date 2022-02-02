@@ -109,7 +109,6 @@ def cisco_Backup_ASA(device_ip, device_username, device_password, device_enable)
             if string_output != None:    
                 try:
                     os.mkdir('BACKUP_CFGs/')
-                    open(os.path.join(os.getcwd(),'ASA_IP_List.txt'))
                     print('Created new Directory',os.getcwd(),'\'BACKUP_CFGs\'')
                 except FileExistsError:
                     print('Using existing directory', os.getcwd(),'\'BACKUP_CFGs\'')
