@@ -1,0 +1,127 @@
+#   File: "cdp_Crwal.py"
+#   Please refer to str 'help'
+
+from ctypes import sizeof
+from os import system
+from platform import platform
+import paramiko
+from paramiko_expect import SSHClientInteraction
+import sys, getopt
+import json
+
+help = '''
+Connect via SSH to grab CDP neighbor information from Cisco IOS appliances.
+Output --> JSON
+Arguments List:
+    -h --help --> Help
+    -i --ip --> IPAddress
+    -u --username --> UserName
+    -p --password --> Password
+'''
+
+def Cisco_Get_CDP_Neighbors(device_ip, device_username, device_password):
+    '''
+    Conncets via SSH on default port. 
+    Grabs output of command "show cdp neighbors detail | i Device.ID|IP.address|Platform|Interface". 
+    Returns output as json. 
+    '''
+    ssh = paramiko.SSHClient()
+    ssh.load_system_host_keys()                                     # Loading SSH host keys
+    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())       # Add SSH host key automatically
+    prompt_P1 = '.*>'                                               # Define Prompt for privilege 1
+    prompt_P15 = '.*#'                                              # Define Prompt for privilege 15
+    system('cls')
+    print('-'*96)
+    try:
+        print('Connection attempt for IP: ' + device_ip)
+        ssh.connect(device_ip, 22, device_username, device_password)
+        with SSHClientInteraction(ssh, timeout=2,display=False) as interact:
+            string_output = interact.current_output_clean.splitlines()
+            if (interact.expect(prompt_P15,timeout=2)==0):          #invoke sub session for multiple command executions
+                interact.send('terminal len 0')
+                interact.expect(prompt_P15,timeout=2)
+                interact.send('show cdp neighbors detail | i Device.ID|IP.address|Platform|Interface')
+                interact.expect(prompt_P15,timeout=2)
+                for line in interact.current_output_clean.splitlines():
+                    string_output += [line.replace('\x08', '')] 
+    except Exception as error_message:
+        print('Connection failed for device IP: ' + device_ip)
+        print(error_message)
+        return()
+    finally:
+        ssh.close()
+    return string_output[1:]
+
+def Cisco_JSON_CDP_Output(device_ip, device_username, device_password): 
+    '''
+    Gets Cisco CDP output from device_ip in string. 
+    Apply filteration, foramt, and returns output as JSON. 
+    '''
+    cdp_cli_output = Cisco_Get_CDP_Neighbors(device_ip, device_username, device_password)
+    # Strip CDP output strings info with relevant information
+    cdp_neighbor_list = []    
+    for line in cdp_cli_output:
+        if 'Device ID:' in line:        cdp_neighbor_list.append("device_ID= " + line.split()[-1])
+        elif 'IP address:' in line:     cdp_neighbor_list.append(", device_IP= " + line.split()[-1])
+        elif 'Platform:' in line:
+            if 'cisco' in line.lower(): cdp_neighbor_list.append(", platform= " + line.split()[2].replace(',',''))
+            else:                       cdp_neighbor_list.append(", platform= " + line.split()[1].replace(',',''))
+        elif 'Interface:' in line:
+            cdp_neighbor_list.append(", local_port= " + line.split()[1].replace(',',''))
+            cdp_neighbor_list.append(", remote_port= " + line.split()[-1])
+    # Sort CDP output string info in linear format
+    linear_cdp_cli_output = []
+    index = -1
+    for count in range(len(cdp_neighbor_list)):
+        if 'device_ID' in cdp_neighbor_list[count]:
+            linear_cdp_cli_output.append(cdp_neighbor_list[count])
+            index += 1
+        else:
+            if 'device_IP' not in linear_cdp_cli_output[index]:     linear_cdp_cli_output[index] += str(cdp_neighbor_list[count])
+            elif 'device_IP' not in cdp_neighbor_list[count]:       linear_cdp_cli_output[index] += str(cdp_neighbor_list[count])
+    # Get neighbor node host Names
+    cdp_neighbor = []
+    for line in linear_cdp_cli_output:
+        cdp_neighbor.append(line.split(',')[0].split('=')[1].strip())
+    # Remove duplications
+    cdp_neighbor = list(dict.fromkeys(cdp_neighbor))
+    dict_cdp_neighbor = {}
+    # Define dictionary for neighbor information
+    for line in cdp_neighbor:
+        dict_cdp_neighbor[line] = { 'device_IP':'', 'platform':'', 'local_port':[],'remote_port':[] }
+    # Populate Dictionary with CDP info
+    linear_index = 0
+    for linear_index in range(len(linear_cdp_cli_output)):
+        device_ID = linear_cdp_cli_output[linear_index].split()[1].strip(',')
+        dict_cdp_neighbor[device_ID]['device_IP'] = linear_cdp_cli_output[linear_index].split()[3].strip(',')
+        dict_cdp_neighbor[device_ID]['platform'] = linear_cdp_cli_output[linear_index].split()[5].strip(',')
+        dict_cdp_neighbor[device_ID]['local_port'].append(linear_cdp_cli_output[linear_index].split()[7].strip(','))
+        dict_cdp_neighbor[device_ID]['remote_port'].append(linear_cdp_cli_output[linear_index].split()[9].strip(','))
+    # Convert dictionary and return JSON
+    return json.dumps(dict_cdp_neighbor, sort_keys=True, indent=4)
+
+def main(arguments):
+    options = 'hi:u:p:'
+    long_options = ['help','host =','username =','password =']
+    device_ip = ''
+    device_username = ''
+    device_password = ''
+    system('cls')
+    try:
+        arguments = getopt.getopt(arguments, options, long_options)
+        for option, value in arguments:
+            if option in ('-h', '--help'):
+                print(help, '\n','-'*96)
+                sys.exit(2)
+            elif option in ('-i', '--ip'):  device_ip = value
+            elif option in ('-u', '--username'):  device_username = value
+            elif option in ('-p', '--password'):  device_password= value
+    except getopt.GetoptError as error:
+        print('Failed to grab input arguments. Program will Exit now... ')
+        print(str(error))
+        sys.exit(2)
+    print(Cisco_JSON_CDP_Output(device_ip, device_username, device_password))
+    print('Exiting main \n','-'*96)
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
