@@ -1,0 +1,76 @@
+#   primeGetInventory.py
+#   Please refer to str 'help'
+
+from os import system
+import os.path
+import sys, getopt
+import requests
+import json
+import time
+
+help = '''
+Calls Cisco Prime API to get device list
+Output --> 'prime_devices.txt' file in source directory
+Arguments List:
+    -h --help --> Help
+    -i --ip --> Prime IPAddress
+    -u --username --> UserName
+    -p --password --> Password
+'''
+
+def primeGetInventory(device_ip, device_username, device_password):
+    base_uri = 'https://' + device_ip
+    user = device_username
+    password = device_password
+    rest_path = '/webacs/api/v4/data/Devices.json'
+    url = base_uri + rest_path
+    # Get JSON information for list of devices from Prime
+    response = requests.request('GET', url, auth=(user, password), verify=False).json()
+    prime_device_info = []
+    for item in response['queryResponse']['entityId']:
+        prime_device_info.append(requests.request('GET', item['@url'] + '.json', auth=(user, password), verify=False).json()['queryResponse']['entity'][0]['devicesDTO'])
+        time.sleep(0.025)         # To cater default value of Prime API request throtelling rate limit.
+    prime_devices = {}
+    for item in prime_device_info:
+        prime_devices[item['@id']] = {
+                                'deviceName':item['deviceName'],
+                                'deviceType':item['deviceType'],
+                                'ipAddress':item['ipAddress'],
+                                'PID':item['manufacturerPartNrs']['manufacturerPartNr'][0]['partNumber'],
+                                'serialNumber':item['manufacturerPartNrs']['manufacturerPartNr'][0]['serialNumber'],
+                                'productFamily':item['productFamily'],
+                                'softwareType':item['softwareType'],
+                                'softwareVersion':item['softwareVersion'],
+                            }
+    return prime_devices    # Returning dictionary as Json.dumps() truncates output.
+
+def main(arguments):
+    options = 'hi:u:p:'
+    long_options = ['help', ' ip=', 'username=', 'password=']
+    device_ip = ''
+    device_username = ''
+    device_password = ''
+    system('cls')
+    try:
+        arguments, values = getopt.getopt(arguments, options, long_options)
+        for option, value in arguments:
+            if option in ('-h', '--help'):
+                print(help, '\n','-'*96)
+                sys.exit(2)
+            elif option in ('-i', '--ip'):  device_ip = value
+            elif option in ('-u', '--username'):  device_username = value
+            elif option in ('-p', '--password'):  device_password = value
+    except getopt.GetoptError as error:
+        print('Failed to grab input arguments. Program will Exit now... ')
+        print(str(error))
+        sys.exit(2)
+    try:
+        with open(os.path.join(os.getcwd(),'prime_devices.txt'), 'w') as file_write:
+            json.dump(primeGetInventory(device_ip, device_username,device_password), file_write, sort_keys=True, indent=4)
+    except Exception as error_message:
+        print('File write operation failed')
+        print(error_message)
+    print('Exiting main \n','-'*96)
+    
+if __name__ == '__main__':
+    main(sys.argv[1:])
