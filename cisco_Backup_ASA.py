@@ -141,7 +141,7 @@ def main(arguments):
     device_password = ''
     device_enable = ''
     options = 'hi:u:p:s:'
-    long_options = ['help','host =','username =','password =','secret =',]
+    long_options = ['help','host=','username=','password=','secret=',]
     system('cls')
     print('-'*96)
     try:
